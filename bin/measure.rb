@@ -197,6 +197,10 @@ end
 File.write(File.expand_path("../out/axes.json", __dir__),
            JSON.pretty_generate(
              generated_from: "aozora-sakuin/data/raw",
+             # 走査条件を刻む。抜き取り実行が全件実行の出力を黙って上書きしても、
+             # ファイルを見れば分かるようにする(実測 2026-08-27: 古い背景ジョブが
+             # 全件の出力を 400 作の結果で上書きした)。
+             works_scanned: works.length, limit: limit, authors_measured: ok.length,
              min_n: MIN_N, easy_cum: A::EASY_CUM, hard_cum: A::HARD_CUM,
              gates: { g04_r: r_axes, g04_pass: r_axes.abs < 0.7,
                         g09_r: r_km, g09_pass: r_km.abs < 0.7,

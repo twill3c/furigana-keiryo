@@ -48,6 +48,11 @@ module Aozora
         end
         next if row.nil? || row[0] == "作品ID"
 
+        # 1 作品に著者・訳者・編者の行が並ぶ(1,464 作 = 8.2% 実測 2026-08-27)。
+        # 素朴に上書きすると最後の行(多くは訳者)の生年が入り、
+        # 紫式部の生年が 1878(与謝野晶子)になる。著者の行だけを採る。
+        next unless row[23].to_s.include?("著者")
+
         y = row[24].to_s[/\A(\d{4})/, 1]
         out[row[0]] = y.to_i if y
       end
