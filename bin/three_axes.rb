@@ -14,6 +14,7 @@
 #   G-13 置換検定(2,000 回・seed 20260827)で帰無分布の最大値を超える
 
 require "json"
+require "set"
 require_relative "../lib/aozora/corpus"
 require_relative "../lib/aozora/tally"
 require_relative "../lib/aozora/axes"
@@ -34,6 +35,22 @@ MIN_REP = 100
 limit = (i = ARGV.index("--limit")) ? ARGV[i + 1].to_i : nil
 works = C.works.sort_by(&:id)
 works = works.first(limit) if limit
+
+# --exclude-sourubi: 総ルビ組版の作品を母集団から外す(SPEC F-13 / G-16)。
+# 除外は out/sourubi.json の判定に従う。ここで閾値を持たない — 判定の出所を一つにする。
+excluded = 0
+if ARGV.include?("--exclude-sourubi")
+  path = File.expand_path("../out/sourubi.json", __dir__)
+  abort "out/sourubi.json が無い。先に ruby bin/sourubi.rb を回すこと" unless File.exist?(path)
+
+  j = JSON.parse(File.read(path, encoding: "UTF-8"))
+  abort "総ルビの分離ゲート(G-14/G-15)が落ちている。分離してはならない" unless j["gates"]["g14_pass"] && j["gates"]["g15_pass"]
+
+  ids = j["sourubi_ids"].to_set
+  before = works.length
+  works = works.reject { |w| ids.include?(w.id) }
+  excluded = before - works.length
+end
 
 # ── 第 1 走査 ────────────────────────────────────────────────
 # 作家ごとに、全体・前半・後半の三つ組で数える。
@@ -121,7 +138,7 @@ v_rep  = D.permutation_test(res_a[:repeat], res_b[:repeat], seed: SEED, n: PERM)
 
 # ── 報告 ─────────────────────────────────────────────────────
 puts "== 走査 =="
-puts "作品            : #{works.length}"
+puts "作品            : #{works.length}#{excluded.positive? ? "(総ルビ #{excluded} 作を除外)" : ""}"
 puts "作家            : #{rows.length}"
 puts "三軸を測れる作家: #{full_ok.length}"
 puts "半分割できる作家: #{split_ok.length}(前半・後半それぞれ最低量を満たす)"
@@ -170,7 +187,7 @@ end
 
 File.write(File.expand_path("../out/three_axes.json", __dir__),
            JSON.pretty_generate(
-             works_scanned: works.length, limit: limit,
+             works_scanned: works.length, limit: limit, sourubi_excluded: excluded,
              authors_full: full_ok.length, authors_split: split_ok.length,
              seed: SEED, permutations: PERM, min_n: MIN_N, min_rep: MIN_REP,
              gates: { g11_hard: r_hh, g11_repeat: r_rr, g11_pass: g11,
