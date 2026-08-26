@@ -13,12 +13,15 @@ require "json"
 require_relative "../lib/aozora/corpus"
 require_relative "../lib/aozora/tally"
 require_relative "../lib/aozora/axes"
+require_relative "../lib/aozora/repeat"
 
 C = Aozora::Corpus
 T = Aozora::Tally
 A = Aozora::Axes
+R = Aozora::Repeat
 
 MIN_N = 1000   # 各帯でこれ未満の出現しかない作家は測定不能として外す
+MIN_REP = 200  # 再出現がこれ未満の作家は反復率を測定不能として外す
 
 limit = (i = ARGV.index("--limit")) ? ARGV[i + 1].to_i : nil
 works = C.works
@@ -26,6 +29,7 @@ works = works.first(limit) if limit
 
 # ── 第 1 走査: 作家ごとに漢字の出現を数える ────────────────────
 by_author = Hash.new { |h, k| h[k] = T::Counts.empty }
+rep_of = Hash.new { |h, k| h[k] = R::Tally.empty }
 meta = Hash.new { |h, k| h[k] = { works: 0, born: nil, kana: Hash.new(0) } }
 missing = 0
 
@@ -36,6 +40,7 @@ works.each_with_index do |w, i|
     next
   end
   by_author[w.author].merge!(T.count(nodes))
+  rep_of[w.author].merge!(R.count(nodes))   # 反復は作品単位で数えてから合算する
   m = meta[w.author]
   m[:works] += 1
   m[:born] ||= w.born
@@ -70,6 +75,9 @@ by_author.each do |author, counts|
     kindness: r.kindness, trust: r.trust, hard_n: r.hard_n, easy_n: r.easy_n,
     kindness_cohort: rc.kindness, trust_cohort: rc.trust,
     duty: counts.duty.values.sum,
+    repeats: rep_of[author].repeats,
+    # 記憶への信用 = 1 − 反復率。一度教えた語を二度目に放っておく度合い。
+    memory: rep_of[author].rate&.then { |r| (1.0 - r) * 100 },
     # 総ルビ傾向。二軸の交絡候補。この 1 変数が二軸の両方を押し引きしている疑いがある。
     density: counts.rubied.values.sum * 100.0 /
              [counts.plain.values.sum + counts.rubied.values.sum, 1].max
@@ -123,6 +131,39 @@ puts(if share < 90
        "  → 保留。表の時代で結果が動く"
      end)
 
+# ── G-09 / G-10 第二軸(記憶への信用) ─────────────────────────
+# 判定線は測定前に SPEC へ書き、コミット 0102e33 で封じてある。
+mem_ok = ok.select { |r| r[:memory] && r[:repeats] >= MIN_REP }
+ms = mem_ok.map { |r| r[:memory] }
+mks = mem_ok.map { |r| r[:kindness] }
+mds = mem_ok.map { |r| r[:density] }
+r_km = A.correlation(mks, ms)
+r_md = A.correlation(ms, mds)
+
+puts
+puts "== 第二軸: 記憶への信用(反復率の裏返し) =="
+puts "測定可能な作家: #{mem_ok.length}(再出現 #{MIN_REP} 回以上)"
+puts "平均          : #{'%.1f' % (ms.sum / ms.length)} %"
+puts
+puts "== G-09 二軸の独立(判定線 |r| < 0.7・測定前に宣言) =="
+puts "優しさ × 記憶への信用 r : #{'%.3f' % r_km}"
+puts(r_km.abs < 0.7 ? "  → 合格" : "  → 失格")
+puts
+puts "== G-10 交絡からの独立(判定線 |r| < 0.5・測定前に宣言) =="
+puts "記憶への信用 × 総ルビ傾向 r : #{'%.3f' % r_md}"
+puts(r_md.abs < 0.5 ? "  → 合格。第二軸は総ルビ傾向の言い換えではない" : "  → 失格。loop_002 と同じ失敗。軸を捨てる")
+
+mm = ms.sum / ms.length
+mkk = mks.sum / mks.length
+q2 = Hash.new(0)
+mem_ok.each { |r| q2[[r[:kindness] >= mkk, r[:memory] >= mm]] += 1 }
+puts
+puts "== 新しい四象限(平均で区切る) =="
+puts "過保護  (優 高・記憶 低): #{q2[[true, false]]}   難所で助け、何度でも振り直す"
+puts "案内人  (優 高・記憶 高): #{q2[[true, true]]}   難所で助け、一度教えたら放っておく"
+puts "無頓着  (優 低・記憶 低): #{q2[[false, false]]}   助けないのに振り直す"
+puts "突き放し(優 低・記憶 高): #{q2[[false, true]]}   助けず、繰り返しもしない"
+
 # ── 事後診断(ゲートではない) ────────────────────────────────
 # G-04 が落ちた機構を測る。閾値も帯も動かさない。
 # 総ルビ傾向(density)は作家ごとの文体・編集方針であり、二軸の**両方**を押す。
@@ -145,11 +186,12 @@ puts "案内人  (優 高・信 高): #{quad[[true, true]]}"
 puts "ちぐはぐ(優 低・信 低): #{quad[[false, false]]}"
 puts "突き放し(優 低・信 高): #{quad[[false, true]]}"
 puts
+puts
 puts "== 作品数の多い作家 20 名 =="
-puts format("%-14s %5s %5s %7s %7s %6s", "作家", "作品", "生年", "優しさ", "信用", "文字遣い")
-ok.sort_by { |r| -r[:chars] }.first(20).each do |r|
-  puts format("%-14s %5d %5s %7.1f %7.1f  %s",
-              r[:author], r[:works], r[:born] || "–", r[:kindness], r[:trust], r[:kana])
+puts format("%-14s %5s %5s %7s %7s %7s", "作家", "作品", "生年", "優しさ", "記憶", "総ルビ")
+mem_ok.sort_by { |r| -r[:chars] }.first(20).each do |r|
+  puts format("%-14s %5d %5s %7.1f %7.1f %7.1f",
+              r[:author], r[:works], r[:born] || "–", r[:kindness], r[:memory], r[:density])
 end
 
 File.write(File.expand_path("../out/axes.json", __dir__),
@@ -157,8 +199,10 @@ File.write(File.expand_path("../out/axes.json", __dir__),
              generated_from: "aozora-sakuin/data/raw",
              min_n: MIN_N, easy_cum: A::EASY_CUM, hard_cum: A::HARD_CUM,
              gates: { g04_r: r_axes, g04_pass: r_axes.abs < 0.7,
+                        g09_r: r_km, g09_pass: r_km.abs < 0.7,
+                        g10_r: r_md, g10_pass: r_md.abs < 0.5,
                         g06_r_kindness: r_era_k, g06_r_trust: r_era_t },
              diagnostic: { r_kindness_density: r_kd, r_trust_density: r_td, partial_r: partial },
              authors: rows.sort_by { |r| -r[:chars] }
            ))
-exit(r_axes.abs < 0.7 ? 0 : 1)
+exit(r_km.abs < 0.7 && r_md.abs < 0.5 ? 0 : 1)
