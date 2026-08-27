@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>振仮名計量 — 青空文庫のルビを三軸で計る</title>
+<meta name="description" content="青空文庫 4,916 作の振り仮名を、総ルビ傾向・難所への偏り・繰り返しの抑制の三軸で計量する。二軸の設計は実測で二度否定された。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper:#E7E8E2; --surface:#F4F5F0; --raised:#FCFCF9;
+    --ink:#1A1D22; --ink-2:#4C5158; --ink-3:#82868C; --ink-4:#A6A9AD;
+    --rule:#C7C9C1; --rule-soft:#D9DBD4;
+    --ruby:#9B2242; --ruby-dim:#B8607A; --ruby-wash:rgba(155,34,66,.10);
+    --asagi:#2F6A7E; --asagi-dim:#5D93A5; --asagi-wash:rgba(47,106,126,.11);
+    --ok:#3F6B4A; --ok-wash:rgba(63,107,74,.12);
+    --warn:#8A6414; --warn-wash:rgba(138,100,20,.13);
+    --shadow:0 1px 2px rgba(26,29,34,.06),0 8px 24px -12px rgba(26,29,34,.18);
+    --mincho:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+    --gothic:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --paper:#15171B; --surface:#1C1F24; --raised:#23272D;
+    --ink:#E9E7E2; --ink-2:#ADB2B9; --ink-3:#7C8189; --ink-4:#5C6169;
+    --rule:#343943; --rule-soft:#2A2E36;
+    --ruby:#E27E96; --ruby-dim:#B76075; --ruby-wash:rgba(226,126,150,.13);
+    --asagi:#6FB0C8; --asagi-dim:#4E8398; --asagi-wash:rgba(111,176,200,.14);
+    --ok:#79B78C; --ok-wash:rgba(121,183,140,.14);
+    --warn:#D2AC5A; --warn-wash:rgba(210,172,90,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--gothic);
+       font-size:15px;line-height:1.8;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 22px 40px}
+  a{color:var(--asagi)}
+
+  header{padding:44px 0 20px;border-bottom:1px solid var(--ink);
+         display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px 30px}
+  h1{font-family:var(--mincho);font-weight:800;font-size:clamp(32px,5vw,46px);
+     line-height:1.15;letter-spacing:.04em;margin:0;text-wrap:balance}
+  h1 rt{font-family:var(--gothic);font-weight:500;font-size:.3em;letter-spacing:.12em;color:var(--ruby)}
+  .lede{flex:1 1 300px;margin:0 0 5px;font-size:14px;color:var(--ink-2);max-width:50ch}
+  .lede b{color:var(--ink)}
+
+  .gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+          border-bottom:1px solid var(--rule)}
+  .gauge{padding:16px 18px 18px;border-right:1px solid var(--rule-soft)}
+  .gauge:last-child{border-right:0}
+  .gauge .lbl{font-size:11px;letter-spacing:.12em;color:var(--ink-3);font-weight:500}
+  .gauge .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:25px;
+              font-weight:500;line-height:1.3;margin-top:3px}
+  .gauge .val small{font-size:12px;color:var(--ink-3);margin-left:3px}
+  .gauge .sub{font-size:11.5px;color:var(--ink-3);line-height:1.6}
+  .gauge.pass .val{color:var(--ok)}
+
+  section{margin-top:40px}
+  h2{font-family:var(--mincho);font-size:22px;font-weight:600;letter-spacing:.08em;
+     margin:0 0 6px;padding-bottom:9px;border-bottom:1px solid var(--rule)}
+  h2 span{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-3);
+          font-weight:400;margin-left:12px}
+  h3{font-family:var(--mincho);font-size:16px;font-weight:600;letter-spacing:.08em;margin:26px 0 8px}
+  p{margin:12px 0}
+  .muted{color:var(--ink-2);font-size:14px}
+
+  .axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px}
+  .axis{background:var(--raised);border:1px solid var(--rule);border-radius:2px;padding:16px 18px 18px;box-shadow:var(--shadow)}
+  .axis .no{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-3)}
+  .axis h4{font-family:var(--mincho);font-size:18px;font-weight:600;margin:3px 0 6px;letter-spacing:.04em}
+  .axis.a1 h4{color:var(--ink)} .axis.a2 h4{color:var(--ruby)} .axis.a3 h4{color:var(--asagi)}
+  .axis p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.75}
+
+  .panel{background:var(--raised);border:1px solid var(--rule);border-radius:2px;
+         box-shadow:var(--shadow);margin-top:18px}
+  .phead{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
+         padding:13px 18px;border-bottom:1px solid var(--rule-soft)}
+  .ptitle{font-family:var(--mincho);font-size:16px;font-weight:600}
+  .ptitle em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:9px}
+  .note{margin:0;padding:12px 18px 14px;border-top:1px dashed var(--rule);
+        font-size:12.5px;color:var(--ink-3);line-height:1.8}
+  .note b{color:var(--ink-2)}
+  code{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+
+  /* 散布図 */
+  .plotwrap{padding:22px 22px 6px}
+  .plotgrid{display:grid;grid-template-columns:24px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 24px;gap:7px}
+  .ylab,.xlab{font-size:11.5px;letter-spacing:.1em;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .ylab{writing-mode:vertical-rl;color:var(--asagi)}
+  .xlab{grid-column:2;color:var(--ruby)}
+  .plot{position:relative;aspect-ratio:4/3;min-height:300px;border:1px solid var(--rule);background:var(--surface);overflow:hidden}
+  .plot .div{position:absolute;background:var(--rule)}
+  .plot .div.v{top:0;bottom:0;width:1px}
+  .plot .div.h{left:0;right:0;height:1px}
+  .plot .quad{position:absolute;font-size:11px;line-height:1.5;color:var(--ink-4);letter-spacing:.05em;max-width:42%}
+  .plot .quad b{display:block;font-family:var(--mincho);font-size:13.5px;color:var(--ink-3);letter-spacing:.09em}
+  .dot{position:absolute;transform:translate(-50%,50%);border-radius:50%;
+       background:var(--ruby-wash);border:1.5px solid var(--ruby-dim);cursor:pointer;
+       transition:background .12s ease,border-color .12s ease}
+  .dot:hover,.dot[aria-selected="true"]{background:var(--ruby);border-color:var(--ruby)}
+  .dot:focus-visible{outline:2px solid var(--asagi);outline-offset:2px}
+  .dotlab{position:absolute;transform:translateY(50%);font-family:var(--mincho);font-size:12.5px;
+          font-weight:600;white-space:nowrap;pointer-events:none;color:var(--ink)}
+  .readout{padding:0 22px 16px;font-family:var(--mono);font-size:12px;
+           font-variant-numeric:tabular-nums;color:var(--ink-2);min-height:2.6em;line-height:1.7}
+  .readout b{font-family:var(--mincho);font-size:15px;color:var(--ink)}
+
+  /* 原文 */
+  .modes{display:flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:2px;overflow:hidden}
+  .modes button{font:500 12px/1 var(--gothic);letter-spacing:.03em;padding:9px 12px;background:transparent;
+                color:var(--ink-2);border:0;border-right:1px solid var(--rule);cursor:pointer}
+  .modes button:last-child{border-right:0}
+  .modes button:hover{background:var(--surface);color:var(--ink)}
+  .modes button:focus-visible{outline:2px solid var(--asagi);outline-offset:-2px}
+  .modes button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+  .stage{padding:30px 26px 24px;font-family:var(--mincho);font-size:20px;line-height:2.5;letter-spacing:.02em}
+  .stage rt{font-family:var(--gothic);font-size:.42em;font-weight:500;letter-spacing:.04em;line-height:1.2}
+  .k-help rt{color:var(--ruby)}
+  .k-help{background:linear-gradient(transparent 74%,var(--ruby-wash) 74%);border-bottom:1.5px solid var(--ruby-dim)}
+  .k-over rt{color:var(--asagi)}
+  .k-over{background:linear-gradient(transparent 74%,var(--asagi-wash) 74%);border-bottom:1.5px solid var(--asagi-dim)}
+  .k-mid rt{color:var(--ink-3)}
+  .k-mid{border-bottom:1.5px solid var(--ink-4)}
+  .k-duty rt,.k-other rt{color:var(--ink-3)}
+  .k-duty,.k-other{border-bottom:1.5px dotted var(--ink-4)}
+  .keys{display:flex;flex-wrap:wrap;gap:7px 20px;padding:11px 18px;border-top:1px solid var(--rule-soft);
+        background:var(--surface);font-size:11.5px;color:var(--ink-3)}
+  .keys .sw{display:inline-block;width:20px;height:0;border-bottom:2px solid var(--ink-4);
+            transform:translateY(-3px);margin-right:6px}
+  .keys .help .sw{border-bottom-color:var(--ruby-dim)}
+  .keys .over .sw{border-bottom-color:var(--asagi-dim)}
+  .keys .duty .sw{border-bottom-style:dotted}
+  .keys b{font-family:var(--mono);color:var(--ink);font-weight:600}
+
+  /* 総ルビ */
+  .hist{display:flex;align-items:flex-end;gap:2px;height:150px;padding:14px 18px 0}
+  .hist .bar{flex:1;background:var(--asagi);opacity:.5;min-height:1px;position:relative}
+  .hist .bar.sou{background:var(--ruby);opacity:.85}
+  .hist .bar:hover{opacity:1}
+  .histx{display:flex;justify-content:space-between;padding:5px 18px 12px;
+         font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+  .pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0;
+        border-top:1px solid var(--rule-soft)}
+  .pair > div{padding:16px 18px;border-right:1px solid var(--rule-soft)}
+  .pair > div:last-child{border-right:0}
+  .pair .t{font-family:var(--mincho);font-size:17px;font-weight:600}
+  .pair .p{font-family:var(--mono);font-size:28px;font-variant-numeric:tabular-nums;margin-top:4px}
+  .pair .hi .p{color:var(--ruby)} .pair .lo .p{color:var(--asagi)}
+  .pair .c{font-size:12px;color:var(--ink-3)}
+
+  /* 表 */
+  .tscroll{overflow-x:auto;padding:0 18px 16px}
+  table{border-collapse:collapse;width:100%;min-width:620px;font-variant-numeric:tabular-nums}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--rule-soft)}
+  thead th{font-size:11px;font-weight:500;color:var(--ink-3);letter-spacing:.04em;
+           border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--raised)}
+  th.l,td.l{text-align:left}
+  td{font-family:var(--mono);font-size:13px}
+  td.l{font-family:var(--mincho);font-size:15px;font-weight:600;white-space:nowrap}
+  tbody tr:hover{background:var(--surface);cursor:pointer}
+  .pos{color:var(--ruby)} .neg{color:var(--asagi)}
+
+  /* ゲート */
+  .gate{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:14px;align-items:baseline;
+        padding:12px 18px;border-bottom:1px solid var(--rule-soft)}
+  .gate:last-child{border-bottom:0}
+  .gate .id{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink-3);letter-spacing:.05em}
+  .gate .d{font-size:13.5px;line-height:1.65}
+  .gate .d em{font-style:normal;display:block;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.07em;
+        padding:4px 9px;border-radius:2px;white-space:nowrap}
+  .pill.ok{background:var(--ok-wash);color:var(--ok)}
+  .pill.ng{background:var(--warn-wash);color:var(--warn)}
+
+  .dead{border-left:3px solid var(--warn);padding:2px 0 2px 16px;margin:18px 0}
+  .dead h3{margin-top:0}
+
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--rule);
+         font-size:11.5px;line-height:1.9;color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1><ruby>振仮名<rt>ふりがな</rt></ruby><ruby>計量<rt>けいりょう</rt></ruby></h1>
+  <p class="lede">青空文庫の振り仮名注記を Ruby で解析し、作家の振り方を三軸で計る。<br>
+     <b>当初の二軸の設計は、実測で二度否定された。</b>その経緯も残している。</p>
+</header>
+
+<section class="gauges" aria-label="全体">
+  <div class="gauge"><div class="lbl">対象作品</div><div class="val" id="g-works">—</div>
+    <div class="sub" id="g-works-sub">—</div></div>
+  <div class="gauge"><div class="lbl">測定した作家</div><div class="val" id="g-authors">—</div>
+    <div class="sub" id="g-authors-sub">—</div></div>
+  <div class="gauge pass"><div class="lbl">往復検査</div><div class="val">100.00<small>%</small></div>
+    <div class="sub">6,195 作・分解 → 再構築 → 原文照合</div></div>
+  <div class="gauge"><div class="lbl">検出ルビ</div><div class="val">1,877,595<small>件</small></div>
+    <div class="sub">本文 1 億 3,624 万字</div></div>
+</section>
+
+<section>
+  <h2>三つの軸<span>第一軸が支配因子。第二・第三はその残差</span></h2>
+  <p class="muted">振り仮名の振り方は、まず<b>「どれだけ振るか」という一本の量に支配されている</b>。
+    優しさも記憶への配慮も、その一本に引きずられる。だから支配因子と直交する軸を探すのをやめ、
+    <b>それ自体を第一軸として名指しし、残りを明示的な残差にした</b>。</p>
+  <div class="axes">
+    <div class="axis a1"><div class="no">第一軸</div><h4>総ルビ傾向</h4>
+      <p>漢字の出現のうち、ルビが振られた割合。作家ごとの文体でもあり、時代と版元の慣行でもある。
+         この一本が他の全部を押している。</p></div>
+    <div class="axis a2"><div class="no">第二軸</div><h4>難所への偏り</h4>
+      <p>自分の総ルビ量から予測されるより、<b>難読字に偏って</b>振るか。
+         正なら難所に集中し、負なら易しい字にも均す。</p></div>
+    <div class="axis a3"><div class="no">第三軸</div><h4>繰り返しの抑制</h4>
+      <p>一度ルビを振った語が再び出たとき、<b>振り直さずに済ますか</b>。
+         正なら読者の記憶を信用し、負なら何度でも振る。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>作家の分布<span>縦 = 繰り返しの抑制 / 横 = 難所への偏り / 円の大きさ = 総ルビ傾向</span></h2>
+  <div class="panel">
+    <div class="plotwrap"><div class="plotgrid">
+      <div class="ylab">繰り返しの抑制 →</div>
+      <div class="plot" id="plot"></div>
+      <div class="xlab">難所への偏り →</div>
+    </div></div>
+    <div class="readout" id="readout">点にふれると作家の値が出ます。</div>
+    <p class="note">二つの残差は<b>互いにほぼ独立</b>(r = −0.122)なので、この平面には情報がある。
+      どちらの残差も総ルビ傾向とは構成上まったく相関しない(r = 0.000)が、
+      <b>それは回帰の帰結であって成果ではない</b>。意味があるのは、
+      この残差が作家ごとに<b>再現する</b>ことのほうである。</p>
+  </div>
+</section>
+
+<section>
+  <h2>本文の上で見る<span>ルビ一つ一つが、どの軸に効いているか</span></h2>
+  <div class="panel">
+    <div class="phead">
+      <div class="ptitle" id="s-title">—</div>
+      <div class="modes" id="s-modes"></div>
+    </div>
+    <div class="stage" id="stage"></div>
+    <div class="keys" id="keys"></div>
+    <p class="note">三分類は計量に使ったものと<b>同じ経路</b>で付けている。
+      <b>救済</b>は難読帯の字を含む基底、<b>過剰</b>は全部が易読帯の基底、
+      <b>義務</b>は読みがカタカナで難読とは無関係に振らざるをえないもの(<code>骨牌《カルタ》</code>)。
+      義務は両軸から外す。帯の中間にある字は<b>中間</b>として、どちらにも数えない。</p>
+  </div>
+</section>
+
+<section>
+  <h2>総ルビ組版を分けた<span>これは作家の判断ではない</span></h2>
+  <p class="muted">本文の全漢字にルビを振る<b>総ルビ組版</b>がある。密度では見分けられない
+    (単に親切な作家と区別できない)ので、<b>難易度への非依存</b>で見分けた。
+    誰でも読める字にまで振るかどうか、である。</p>
+  <div class="panel">
+    <div class="hist" id="hist"></div>
+    <div class="histx"><span>0.0</span><span>易読帯の漢字のうちルビが振られた割合</span><span>1.0</span></div>
+    <div class="pair" id="pair"></div>
+    <p class="note">右の谷から先が総ルビ。<b>同じ作者の同じ話の別訳</b>で片方だけが総ルビになる。
+      作者の判断なら、こうは割れない。分離して測り直したら、
+      <b>作家ごとの再現性はむしろ上がった</b>(+0.617 → +0.685)。</p>
+  </div>
+</section>
+
+<section>
+  <h2>作家一覧<span>行をクリックすると図と本文が動きます</span></h2>
+  <div class="panel">
+    <div class="tscroll"><table>
+      <thead><tr>
+        <th class="l">作家</th><th>生年</th><th>作品</th>
+        <th>総ルビ<br>傾向 %</th><th>難所への<br>偏り</th><th>繰り返しの<br>抑制</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <h2>較正ゲート<span>判定線はすべて測定前に宣言し、コミットで封じた</span></h2>
+  <div class="panel" id="gates"></div>
+</section>
+
+<section>
+  <h2>測って捨てたもの<span>二度、設計が実測に否定された</span></h2>
+  <div class="dead">
+    <h3>捨てた第二軸①「信用（放任率）」</h3>
+    <p class="muted">易読漢字のうちルビを振らなかった割合。母集団が互いに素だから独立だと考えた。
+      実測すると総ルビ傾向との相関 <code>r = −0.994</code> ——
+      <b>事実上の恒等式</b>だった。易読帯は全漢字出現の 75% を占めるので、
+      そこで測った率は全体の率に潰れる。<b>互いに素であることは足りない。帯の質量が効く。</b></p>
+    <h3>捨てた第二軸②「記憶への信用（反復率）」</h3>
+    <p class="muted">母集団を「ルビが付いた語の再出現」に限れば定義から独立する、と考えた。
+      実測 <code>r = −0.813</code>。<b>限定は交絡を条件付けるだけで、除去しない。</b>
+      多く振る作家は再出現でも振る。</p>
+    <p class="muted">二度の失敗が構造を教えた。総ルビ傾向を統制すると、
+      優しさと記憶の相関は <code>−0.093</code> まで落ちる。
+      つまり<b>支配的な一次元と、互いに独立な弱い残差二つ</b>。
+      支配因子は最初から見えていたのに、軸として名指ししなかったために二度追いかけ直した。</p>
+  </div>
+</section>
+
+<section>
+  <h2>限界<span>言えないことを言えないままにしておく</span></h2>
+  <ul class="muted">
+    <li><b>総ルビの分離は不完全。</b> 易読帯の出現が 200 未満の短編
+      <span id="lim-undec">—</span> 作は判定できず、除外されずに残っている。</li>
+    <li><b>義務ルビを取り切れていない。</b> 熟字訓(<code>今宵《こよい》</code>)は
+      いまも救済ルビに数えられている。</li>
+    <li><b>難読度は出現頻度の代理。</b> 頻度が低くても文脈で読める字はある。
+      帯は粗く切り、細かい順位差は解釈しない。</li>
+    <li><b>コーパスは文学に偏る。</b> 新聞・実用書を含まない。作家あたり最大 17 作の均衡設計であり、全集ではない。</li>
+    <li><b>「優しさ」「信用」は指標に付けた名前であって、作家の心理の測定ではない。</b></li>
+  </ul>
+</section>
+
+<footer>
+  <p><a href="https://github.com/twill3c/furigana-keiryo/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a> © 2026 坂田哲朗
+  ・ <a href="https://github.com/twill3c/furigana-keiryo" target="_blank" rel="noopener">GitHub</a>
+  ・ <a href="https://app-menu-amber.vercel.app" target="_blank" rel="noopener">App Menu</a></p>
+  <p>本文は<a href="https://www.aozora.gr.jp/" target="_blank" rel="noopener">青空文庫</a>収録作品（著作権保護期間満了）より。
+     コーパスは <a href="https://github.com/twill3c/aozora-sakuin" target="_blank" rel="noopener">aozora-sakuin</a> の既取得分を再利用し、再取得していません。</p>
+</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var D=null, sel=0, mode="ruby";
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")};
+  var fx=function(n,d){return n.toFixed(d===undefined?1:d)};
+
+  fetch("data.json").then(function(r){return r.json()}).then(function(j){D=j;boot()})
+    .catch(function(){$("readout").textContent="データを読み込めませんでした。"});
+
+  function boot(){
+    var c=D.corpus;
+    $("g-works").textContent=c.works.toLocaleString();
+    $("g-works-sub").textContent="総ルビ "+c.sourubi_excluded+" 作を分離済み";
+    $("g-authors").textContent=c.authors_measured;
+    $("g-authors-sub").textContent="全 "+c.authors_total+" 名中 / 半分割 "+c.authors_split+" 名";
+    $("lim-undec").textContent=c.undecidable;
+    drawPlot(); drawHist(); drawPair(); drawTable(); drawGates(); drawModes(); drawStage();
+  }
+
+  // ── 散布図 ──────────────────────────────
+  function ext(k){var v=D.authors.map(function(a){return a[k]});
+    return [Math.min.apply(null,v),Math.max.apply(null,v)]}
+
+  function drawPlot(){
+    var ex=ext("rh"), ey=ext("rr"), p=$("plot");
+    var px=function(v){return (v-ex[0])/(ex[1]-ex[0])*94+3};
+    var py=function(v){return (v-ey[0])/(ey[1]-ey[0])*94+3};
+    var h='<div class="div v" style="left:'+px(0).toFixed(2)+'%"></div>'
+        + '<div class="div h" style="bottom:'+py(0).toFixed(2)+'%"></div>'
+        + '<div class="quad" style="left:10px;top:8px"><b>均して繰り返さない</b>易所にも振るが、再出現では振らない</div>'
+        + '<div class="quad" style="right:10px;top:8px;text-align:right"><b>案内人</b>難所に集中し、一度で済ます</div>'
+        + '<div class="quad" style="left:10px;bottom:8px"><b>まんべんなく何度も</b>易所にも振り、再出現でも振る</div>'
+        + '<div class="quad" style="right:10px;bottom:8px;text-align:right"><b>難所を繰り返す</b>難所に集中し、出るたび振る</div>';
+    var dmax=Math.max.apply(null,D.authors.map(function(a){return a.d}));
+    D.authors.forEach(function(a,i){
+      var s=7+Math.sqrt(a.d/dmax)*22;
+      h+='<button type="button" class="dot" data-i="'+i+'" aria-selected="'+(i===sel)+'"'
+       + ' aria-label="'+esc(a.n)+'" style="left:'+px(a.rh).toFixed(2)+'%;bottom:'+py(a.rr).toFixed(2)
+       + '%;width:'+s.toFixed(0)+'px;height:'+s.toFixed(0)+'px"></button>';
+    });
+    p.innerHTML=h;
+    p.onclick=function(e){var d=e.target.closest(".dot"); if(d) pick(+d.dataset.i)};
+    p.onmouseover=function(e){var d=e.target.closest(".dot"); if(d) readout(+d.dataset.i)};
+  }
+
+  function readout(i){
+    var a=D.authors[i];
+    $("readout").innerHTML="<b>"+esc(a.n)+"</b>"+(a.y?" ("+a.y+"年生)":"")+" · "+a.w+" 作 · "+esc(a.k||"")
+      +"<br>総ルビ傾向 "+fx(a.d,2)+" % / 難所への偏り "+(a.rh>0?"+":"")+fx(a.rh)
+      +" / 繰り返しの抑制 "+(a.rr>0?"+":"")+fx(a.rr);
+  }
+  function pick(i){
+    sel=i; readout(i);
+    document.querySelectorAll(".dot").forEach(function(d){
+      d.setAttribute("aria-selected", String(+d.dataset.i===i))});
+  }
+
+  // ── ヒストグラム ────────────────────────
+  function drawHist(){
+    var m=Math.max.apply(null,D.hist);
+    $("hist").innerHTML=D.hist.map(function(n,i){
+      var t=(i*0.05).toFixed(2)+"–"+((i+1)*0.05).toFixed(2)+" : "+n+" 作";
+      return '<div class="bar'+(i>=18?" sou":"")+'" style="height:'
+        +Math.max(n/m*100,0.6).toFixed(1)+'%" title="'+t+'"></div>'}).join("");
+  }
+  function drawPair(){
+    if(!D.pair||D.pair.length<2){$("pair").innerHTML="";return}
+    var s=D.pair.slice().sort(function(a,b){return b.p-a.p});
+    $("pair").innerHTML=s.map(function(w,i){
+      return '<div class="'+(i===0?"hi":"lo")+'"><div class="t">『'+esc(w.title)+'』</div>'
+        +'<div class="p">'+w.p.toFixed(3)+'</div>'
+        +'<div class="c">'+esc(w.author)+(i===0?" · 総ルビ":" · ほぼルビ無し")+'</div></div>'}).join("");
+  }
+
+  // ── 表 ─────────────────────────────────
+  function drawTable(){
+    var rows=D.authors.map(function(a,i){return {a:a,i:i}})
+      .sort(function(x,y){return y.a.rh-x.a.rh});
+    $("tbody").innerHTML=rows.map(function(r){
+      var a=r.a;
+      return '<tr data-i="'+r.i+'"><td class="l">'+esc(a.n)+'</td><td>'+(a.y||"–")+'</td><td>'+a.w+'</td>'
+        +'<td>'+fx(a.d,2)+'</td>'
+        +'<td class="'+(a.rh>=0?"pos":"neg")+'">'+(a.rh>0?"+":"")+fx(a.rh)+'</td>'
+        +'<td class="'+(a.rr>=0?"pos":"neg")+'">'+(a.rr>0?"+":"")+fx(a.rr)+'</td></tr>'}).join("");
+    $("tbody").onclick=function(e){var tr=e.target.closest("tr");
+      if(tr){pick(+tr.dataset.i);document.getElementById("plot").scrollIntoView({block:"center"})}};
+  }
+
+  // ── ゲート ─────────────────────────────
+  function drawGates(){
+    var g=D.gates;
+    var L=[
+      ["G-11","残差の再現性：作品を前半・後半に分け、独立に測った残差が作家間で相関するか",
+       "難所への偏り r = +"+fx(g.g11_hard,3)+" / 繰り返しの抑制 r = +"+fx(g.g11_repeat,3)+"（判定線 0.5）", g.g11_pass],
+      ["G-12","残差同士の独立：二つの残差が別の量を測っているか",
+       "r = "+fx(g.g12_r,3)+"（判定線 |r| < 0.3）", g.g12_pass],
+      ["G-13","帰無分布からの分離：作家ラベルを 2,000 回混ぜた分布から観測が外れるか",
+       "p = 0.0005（両軸・seed 20260827）", g.g13_pass],
+      ["G-14","総ルビは別の母集団か：分布が二峰性を示すか",
+       "谷 "+g.g14_mid+" 作 < 左 "+g.g14_low+" 作・右 "+g.g14_high+" 作", g.g14_pass],
+      ["G-15","総ルビは組版方針か文体か：総ルビ作を持つ作家が非総ルビ作も持つか",
+       g.g15_mixed+" / "+g.g15_authors+" 名 = "+fx(g.g15_mixed/g.g15_authors*100)+" %（判定線 50 %）", g.g15_pass]
+    ];
+    $("gates").innerHTML=L.map(function(r){
+      return '<div class="gate"><div class="id">'+r[0]+'</div><div class="d">'+r[1]
+        +'<em>'+r[2]+'</em></div><div class="pill '+(r[3]?"ok":"ng")+'">'+(r[3]?"合格":"失格")+'</div></div>'
+    }).join("")
+    + '<div class="gate"><div class="id">G-07</div><div class="d">義務ルビの分離：熟字訓・当て字を両軸から外す'
+    + '<em>読みがカタカナのものだけ除外できている。熟字訓は未対応</em></div><div class="pill ng">保留</div></div>';
+  }
+
+  // ── 本文 ───────────────────────────────
+  function drawModes(){
+    $("s-modes").innerHTML=D.samples.map(function(s,i){
+      return '<button type="button" data-i="'+i+'" aria-pressed="'+(i===0)+'">'+esc(s.author)+'</button>'
+    }).join("")+'<button type="button" data-m="notation" aria-pressed="false">青空記法</button>';
+    $("s-modes").onclick=function(e){
+      var b=e.target.closest("button"); if(!b) return;
+      if(b.dataset.m){mode=(mode==="notation"?"ruby":"notation")}
+      else {D.sIdx=+b.dataset.i; mode="ruby"}
+      document.querySelectorAll("#s-modes button").forEach(function(x){
+        x.setAttribute("aria-pressed", String(x.dataset.m ? mode==="notation" : +x.dataset.i===(D.sIdx||0)))});
+      drawStage();
+    };
+  }
+  function drawStage(){
+    var s=D.samples[D.sIdx||0]; if(!s) return;
+    $("s-title").innerHTML=esc(s.author)+"『"+esc(s.title)+"』<em>"+esc(s.kana||"")+" · 抜粋</em>";
+    var t={help:0,over:0,mid:0,duty:0,other:0};
+    $("stage").innerHTML=s.nodes.map(function(n){
+      if(n.t==="text") return esc(n.s);
+      t[n.k]=(t[n.k]||0)+1;
+      if(mode==="notation") return '<code>'+esc(n.b)+'《'+esc(n.r)+'》</code>';
+      return '<ruby class="k-'+n.k+'">'+esc(n.b)+'<rt>'+esc(n.r)+'</rt></ruby>';
+    }).join("");
+    $("keys").innerHTML=
+      '<span class="help"><span class="sw"></span>救済 <b>'+t.help+'</b> 件 → 難所への偏りに算入</span>'
+     +'<span class="over"><span class="sw"></span>過剰 <b>'+t.over+'</b> 件 → 偏りを下げる</span>'
+     +'<span><span class="sw"></span>中間 <b>'+t.mid+'</b> 件 → どちらにも数えない</span>'
+     +'<span class="duty"><span class="sw"></span>義務 <b>'+(t.duty+t.other)+'</b> 件 → 両軸から除外</span>';
+  }
+})();
+</script>
+</body>
+</html>

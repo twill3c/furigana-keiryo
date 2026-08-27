@@ -1,0 +1,1 @@
+{"v": "1.2", "ts": "2026-08-27T19:34:47+09:00", "project": "furigana-keiryo", "loop_id": "loop_006", "event": "loop_start", "data": {"goal": "三軸の実測結果を単一 HTML の静的サイトにして Vercel へ出し、app-menu に掲載する", "spec_refs": ["F-07", "F-09", "F-10", "N-01", "N-04", "N-05"], "scaffold_version": "1.12.0", "agent": "claude-code", "model": "claude-opus-5"}}
