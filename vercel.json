@@ -1,4 +1,9 @@
 {
   "buildCommand": null,
-  "outputDirectory": "out/site"
+  "outputDirectory": "out/site",
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  }
 }
