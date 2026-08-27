@@ -128,7 +128,18 @@ module Aozora
       mid.prepend(nodes.pop.raw) while buf.empty? && nodes.last.is_a?(Annot)
 
       # 直前が外字注記なら、それ自体が基底(例: ※［＃「亞＋鳥」…］《からす》)。
-      return [nodes.pop.raw, mid] if buf.empty? && nodes.last.is_a?(Gaiji)
+      # さらにその前が漢字なら、漢字＋外字で 1 つの基底である
+      # (什※［＃「麾」の「毛」…］《どんな》 — 凡例の実例。実測 2026-08-27)。
+      if buf.empty? && nodes.last.is_a?(Gaiji)
+        g = nodes.pop.raw
+        prev = nodes.last
+        if prev.is_a?(Text) && (run = prev.raw[/(?:#{KANJI.source})+\z/])
+          prev.raw = prev.raw[0...-run.length]
+          nodes.pop if prev.raw.empty?
+          return [run + g, mid]
+        end
+        return [g, mid]
+      end
 
       # 注記を剥がすと、基底は確定済みの Text 節点の末尾に残っている。buf に戻して切り出す。
       buf << nodes.pop.raw if buf.empty? && nodes.last.is_a?(Text)
