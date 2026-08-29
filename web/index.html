@@ -34,7 +34,9 @@
   }}
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--gothic);
-       font-size:15px;line-height:1.8;-webkit-font-smoothing:antialiased}
+       font-size:15px;line-height:1.8;-webkit-font-smoothing:antialiased;
+       /* 下部固定のフリートフッタ(末尾の fleet: fixed footer)に隠れないための逃げ */
+       padding-bottom:46px}
   .wrap{max-width:1120px;margin:0 auto;padding:0 22px 40px}
   a{color:var(--asagi)}
 
@@ -177,9 +179,19 @@
   .dead{border-left:3px solid var(--warn);padding:2px 0 2px 16px;margin:18px 0}
   .dead h3{margin-top:0}
 
-  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--rule);
+  footer.foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--rule);
          font-size:11.5px;line-height:1.9;color:var(--ink-3)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* fleet: fixed footer */
+  footer.fleet-footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:10;
+    background:var(--paper);border-top:1px solid var(--rule);
+    color:var(--ink-3);font-size:12px;text-align:center;
+    padding:8px 16px;white-space:nowrap;overflow-x:auto}
+  footer.fleet-footer p{margin:0}
+  footer.fleet-footer a{color:var(--ink-3)}
+  footer.fleet-footer a:hover{color:var(--ink-2)}
 </style>
 </head>
 <body>
@@ -324,16 +336,19 @@
   </ul>
 </section>
 
-<footer>
+<footer class="foot">
+  <p>本文は<a href="https://www.aozora.gr.jp/" target="_blank" rel="noopener">青空文庫</a>収録作品（著作権保護期間満了）より。
+     コーパスは <a href="https://github.com/twill3c/aozora-sakuin" target="_blank" rel="noopener">aozora-sakuin</a> の既取得分を再利用し、再取得していません。</p>
+</footer>
+</div>
+
+<footer class="fleet-footer">
   <p><a href="https://github.com/twill3c/furigana-keiryo/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a> © 2026 坂田哲朗
   ・ <a href="https://github.com/twill3c/furigana-keiryo" target="_blank" rel="noopener">GitHub</a>
   ・ <a href="https://claude.ai/code/artifact/fec0bcb3-c443-4bdc-87f7-26415ff3fdb2" target="_blank" rel="noopener">振仮名計量の歩き方</a>
   ・ <a href="https://claude.ai/code/artifact/d8105fe6-492d-48fc-aa51-9125897a2e4d" target="_blank" rel="noopener">振仮名計量 設計図</a>
   ・ <a href="https://app-menu-amber.vercel.app" target="_blank" rel="noopener">App Menu</a></p>
-  <p>本文は<a href="https://www.aozora.gr.jp/" target="_blank" rel="noopener">青空文庫</a>収録作品（著作権保護期間満了）より。
-     コーパスは <a href="https://github.com/twill3c/aozora-sakuin" target="_blank" rel="noopener">aozora-sakuin</a> の既取得分を再利用し、再取得していません。</p>
 </footer>
-</div>
 
 <script>
 (function(){
